@@ -10,7 +10,7 @@ import soundfile as sf
 
 from levenshtein_distance import levenshtein_distance
 
-# sol1 - сервис участника, sol2 - сервис референсного решения
+
 urls = ['http://sol1:8000', 'http://sol2:8000']
 
 res = []
@@ -40,15 +40,15 @@ for file_name in tests:
     test_id = file_name.split('.')[0]
     print(f'test: {test_id}')
 
-    # читаем текст теста
+
     text = open(os.path.join(folder_path, file_name), 'r', encoding='utf-8').read()
 
-    # импортируем функцию-шума
+
     module = __import__(f'tests.{test_id}', fromlist=['f'])
     distort = module.f
 
     try:
-        # Encode
+
         resp = requests.post(
             encoder_url + '/encode',
             data=json.dumps({'text': text}),
@@ -59,23 +59,23 @@ for file_name in tests:
         wav_base64 = resp.json()['data']
         wav_bytes = base64.b64decode(wav_base64)
 
-        # load wav to numpy
+
         audio, sr = sf.read(BytesIO(wav_bytes))
 
-        # Проверка длительности
+
         duration_seconds = len(audio) / sr
         if duration_seconds > 10:
             raise ValueError(f'Audio duration exceeds 10 seconds: {duration_seconds:.2f}s')
 
         distorted_audio = distort(audio)
 
-        # write back to wav bytes
+
         out_buf = BytesIO()
         sf.write(out_buf, distorted_audio, sr, format='WAV', subtype='PCM_16')
         out_buf.seek(0)
         new_base64 = base64.b64encode(out_buf.read()).decode('utf-8')
 
-        # Decode
+
         resp = requests.post(
             decoder_url + '/decode',
             data=json.dumps({'data': new_base64}),
