@@ -5,24 +5,32 @@
 ✦ Формат аудио: 44100Hz, 16‑bit PCM, mono.
 """
 
-import base64
-import io
-import wave
-
-import numpy as np
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
+import numpy as np
+import wave
+import io
+import base64
 from pathlib import Path
+
+class EncodeRequest(BaseModel):
+    text: str
+
+class EncodeResponse(BaseModel):
+    data: str
+
+class DecodeRequest(BaseModel):
+    data: str
+
+class DecodeResponse(BaseModel):
+    text: str
+
+app = FastAPI()
 
 SAMPLE_RATE = 44_100   # Hz
 BIT_DEPTH = 16         # bits per sample
 CHANNELS = 1
-
-app = FastAPI()
-
-
-
 
 class EncodeRequest(BaseModel):
     text: str
