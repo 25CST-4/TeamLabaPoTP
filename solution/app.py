@@ -11,27 +11,29 @@ import wave
 
 import numpy as np
 from fastapi import FastAPI
-from pydantic import BaseModel, Field
+from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
+from pathlib import Path
 
 SAMPLE_RATE = 44_100   # Hz
 BIT_DEPTH = 16         # bits per sample
 CHANNELS = 1
 
-app = FastAPI(swagger_ui_parameters={"syntaxHighlight": False})
+app = FastAPI()
 
 
 
 
 class EncodeRequest(BaseModel):
-    text: str = Field(..., description="Строка для кодирования в звук")
+    text: str
 
 
 class EncodeResponse(BaseModel):
-    data: str  # base64 wav
+    data: str
 
 
 class DecodeRequest(BaseModel):
-    data: str  # base64 wav
+    data: str
 
 
 class DecodeResponse(BaseModel):
@@ -292,32 +294,28 @@ def audio_to_text(wav_bytes: bytes) -> str:
 
 
 
+
+@app.get("/", response_class=HTMLResponse)
+async def get_index():
+    index_file = Path(file).parent / "index.html"
+    if index_file.exists():
+        return HTMLResponse(content=index_file.read_text(encoding='utf-8'))
+    else:
+        return HTMLResponse(content="<h1>Web interface not found</h1>")
+
 @app.post("/encode", response_model=EncodeResponse)
 async def encode_text(request: EncodeRequest):
+    from audio_encoder import text_to_audio
     wav_bytes = text_to_audio(request.text)
     wav_base64 = base64.b64encode(wav_bytes).decode("utf-8")
     return EncodeResponse(data=wav_base64)
 
-
 @app.post("/decode", response_model=DecodeResponse)
 async def decode_audio(request: DecodeRequest):
+    from audio_decoder import audio_to_text
     wav_bytes = base64.b64decode(request.data)
     text = audio_to_text(wav_bytes)
     return DecodeResponse(text=text)
-
-
-@app.get("/")
-async def root():
-    return {
-        "message": "Text to Audio Encoding/Decoding API",
-        "endpoints": {
-            "POST /encode": "Encode text to WAV audio (base64)",
-            "POST /decode": "Decode WAV audio (base64) to text",
-            "GET /ping": "Health check",
-            "GET /docs": "Swagger UI documentation"
-        },
-        "status": "running"
-    }
 
 @app.get("/ping")
 async def ping():
