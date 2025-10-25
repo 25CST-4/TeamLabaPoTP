@@ -28,47 +28,78 @@ class DecodeResponse(BaseModel):
 
 app = FastAPI()
 
-SAMPLE_RATE = 44_100   # Hz
-BIT_DEPTH = 16         # bits per sample
+SAMPLE_RATE = 44_100
 CHANNELS = 1
+BIT_DEPTH = 16
 
-class EncodeRequest(BaseModel):
-    text: str
+def text_to_audio(text: str) -> bytes:
+    
+ base_freq = 1000  # Базовая частота в Гц
+    freq_step = 150   # Шаг частоты между символами
+    symbol_duration = 0.1  # Длительность одного символа в секундах
+    chars = "0123456789abcdefghijklmnopqrstuvwxyz "
+    char_to_freq = {char: base_freq + i * freq_step for i, char in enumerate(chars)}
+    message_data = []
+    samples_per_symbol = int(SAMPLE_RATE * symbol_duration)
+    text_to_encode = text
 
+    for char in text_to_encode:
+        char_lower = char.lower()
+        if char_lower in char_to_freq:
+            message_data.append(char_to_freq[char_lower])
+        else:
+            message_data.append(char_to_freq[' '])  # Неизвестный символ заменяем на пробел
+    total_samples = len(message_data) * samples_per_symbol
+    audio_signal = np.zeros(total_samples, dtype=np.float32)
+    for i, freq in enumerate(message_data):
+        start_sample = i * samples_per_symbol
+        end_sample = start_sample + samples_per_symbol
+        t = np.linspace(0, symbol_duration, samples_per_symbol, endpoint=False)
+        signal = 0.8 * np.sin(2 * np.pi * freq * t)
+        fade_samples = min(220, samples_per_symbol // 20)
+        if fade_samples > 0:
+            fade_in = np.linspace(0, 1, fade_samples)
+            signal[:fade_samples] *= fade_in
+            fade_out = np.linspace(1, 0, fade_samples)
+            signal[-fade_samples:] *= fade_out
 
-class EncodeResponse(BaseModel):
-    data: str
-
-
-class DecodeRequest(BaseModel):
-    data: str
-
-
-class DecodeResponse(BaseModel):
-    text: str
-
-
-
-
-def _empty_wav(duration_sec: float = 1.0) -> bytes:
-
-    n_samples = int(SAMPLE_RATE * duration_sec)
-    silence = np.zeros(n_samples, dtype=np.int16)
-
+        audio_signal[start_sample:end_sample] = signal
+    audio_int16 = (audio_signal * 32767 * 0.9).astype(np.int16)
     buf = io.BytesIO()
     with wave.open(buf, "wb") as wf:
         wf.setnchannels(CHANNELS)
         wf.setsampwidth(BIT_DEPTH // 8)
         wf.setframerate(SAMPLE_RATE)
-        wf.writeframes(silence.tobytes())
-    return buf.getvalue()
+        wf.writeframes(audio_int16.tobytes())
 
+  return buf.getvalue()
 
+def audio_to_text(wav_bytes: bytes) -> str:
 
+    
+    try:
+        buf = io.BytesIO(wav_bytes)
+        with wave.open(buf, "rb") as wf:
+            frames = wf.readframes(wf.getnframes())
+            audio_data = np.frombuffer(frames, dtype=np.int16)
+        
+        if len(audio_data) == 0:
+            return ""
+        audio_signal = audio_data.astype(np.float32) / 32767.0
+        base_freq = 1000
+        freq_step = 150
+        symbol_duration = 0.1
+        samples_per_symbol = int(SAMPLE_RATE * symbol_duration)
 
-def text_to_bits(text: str) -> str:
-
-    bits = ""
+        if len(audio_signal) < samples_per_symbol:
+            return ""
+        chars = "0123456789abcdefghijklmnopqrstuvwxyz "
+        freq_to_char = {base_freq + i * freq_step: char for i, char in enumerate(chars)}
+        decoded_chars = []
+        num_segments = len(audio_signal) // samples_per_symbol
+        max_segments = min(num_segments, 50000)  # Максимум 50000 символов для безопасности
+        
+\
     for char in text:
 
         bits += format(ord(char), '08b')
@@ -139,15 +170,7 @@ def generate_fsk_signal(bits: str, sample_rate: int = SAMPLE_RATE) -> np.ndarray
         signal = np.concatenate([signal, bit_signal])
     
 
-    if len(signal) > 0:
-        signal = signal / np.max(np.abs(signal)) * 0.8
-    
-    return signal
 
-def decode_fsk_signal(audio: np.ndarray, sample_rate: int = SAMPLE_RATE) -> str:
-
-    if len(audio) == 0:
-        return ""
     
 
     freq_0 = 1200
@@ -272,23 +295,6 @@ def text_to_audio(text: str) -> bytes:
     signal_int16 = (signal * 32767).astype(np.int16)
     
 
-    buf = io.BytesIO()
-    with wave.open(buf, "wb") as wf:
-        wf.setnchannels(CHANNELS)
-        wf.setsampwidth(BIT_DEPTH // 8)
-        wf.setframerate(SAMPLE_RATE)
-        wf.writeframes(signal_int16.tobytes())
-    
-    return buf.getvalue()
-
-def audio_to_text(wav_bytes: bytes) -> str:
-
-    try:
-
-        buf = io.BytesIO(wav_bytes)
-        with wave.open(buf, "rb") as wf:
-            frames = wf.readframes(wf.getnframes())
-            audio_int16 = np.frombuffer(frames, dtype=np.int16)
             
 
         audio = audio_int16.astype(np.float32) / 32768.0
